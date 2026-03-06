@@ -1,0 +1,261 @@
+use anchor_lang::prelude::*; 
+declare_id!("BavuxHPkdt66ArWDT93jezxBqzvErwqw2DmfZZoJZY7B");
+
+#[program] 
+pub mod tienda_crochet { 
+
+    /*
+    REPORTE DEL PROGRAMA
+   El programa simula una tienda de hilos para crochet. Permite crear
+    una tienda y administrar los hilos que hay en ella.
+
+    Con este programa se puede:
+    1. Crear una tienda.
+    2. Agregar hilos.
+    3. Eliminar hilos.
+    4. Ver la lista de hilos.
+    5. Cambiar si un hilo está disponible o no.
+
+    Solo el dueño de la tienda puede modificar los hilos.
+    */
+
+    use super::*;
+
+    Se crea una tienda nueva.
+    pub fn crear_tienda(context: Context<NuevaTienda>, nombre: String) -> Result<()> {
+       
+        // Obtiene la clave pública del comprador
+        let comprador_id = context.accounts.comprador.key();
+
+        // Muestra el id del comprador en los registros
+        msg!("Comprador_id: {}", comprador_id);
+
+        // Se crea una lista vacía de hilos
+        let hilos: Vec<Hilo> = Vec::new(); 
+
+        // Guarda la información de la tienda
+        context.accounts.tienda.set_inner(Tienda { 
+            comprador: comprador_id,
+            nombre,
+            hilos,
+        });
+
+        Ok(())
+    }
+
+   /*
+   Se agrega un hilo a la tienda.
+
+   Recibe del usuario:
+   1. Nombre del hilo
+   2. Color del hilo
+   3. Grosor del hilo
+
+   Lo que hace:
+   1. Verifica que quien ejecuta la función sea el comprador o el dueño de la tienda.
+   2. Crea un nuevo hilo.
+   3. Lo agrega a la lista de hilos.
+   */
+    pub fn agregar_hilo(context: Context<NuevoHilo>, nombre: String, color: String, grosor: u16) -> Result<()> {
+
+        // Verifica que el comprador sea el dueño
+        require!(
+            context.accounts.tienda.comprador == context.accounts.comprador.key(), 
+            Errores::NoEresElComprador 
+        ); 
+
+        // Se crea un hilo nuevo
+        let nuevo_hilo = Hilo { 
+            nombre,
+            color,
+            grosor,
+            disponible: true,
+        };
+
+        // Se agrega el hilo a la lista
+        context.accounts.tienda.hilos.push(nuevo_hilo); 
+
+        Ok(())
+    }
+    /*
+    Se elimina un hilo de la tienda.
+
+    Lo que hace:
+    1. Verifica que el usuario sea el comprador o el dueño. 
+    2. Busca el hilo por su nombre.
+    3. Si lo encuentra lo elimina.
+    4. Si no existe manda un error.
+    */
+    pub fn eliminar_hilo(context: Context<NuevoHilo>, nombre: String) -> Result<()> {
+
+        require!(
+            context.accounts.tienda.comprador == context.accounts.comprador.key(),
+            Errores::NoEresElComprador
+        );
+
+        // Obtiene la lista de hilos
+        let hilos = &mut context.accounts.tienda.hilos;
+
+        // Recorre la lista para buscar el hilo
+        for i in 0..hilos.len() {
+            if hilos[i].nombre == nombre { 
+
+                // Elimina el hilo de la lista
+                hilos.remove(i);
+
+                // Mensaje en los registros
+                msg!("Hilo {} eliminado!", nombre); 
+
+                return Ok(()); 
+            }
+        }
+
+        // Error si el hilo no existe
+        Err(Errores::HiloNoExiste.into()) 
+    }
+
+   /*
+   Muestra todos los hilos de la tienda.
+
+   Lo que hace:
+   1. Verifica que sea el dueño.
+   2. Muestra la lista de hilos en los registros.
+   */
+    pub fn ver_hilos(context: Context<NuevoHilo>) -> Result<()> {
+
+        require!( 
+            context.accounts.tienda.comprador == context.accounts.comprador.key(),
+            Errores::NoEresElComprador 
+        );
+
+        // Muestra la lista de hilos
+        msg!("La lista de hilos actualmente es: {:#?}", context.accounts.tienda.hilos);
+
+        Ok(())
+    }
+
+ 
+    /*
+    Se cambia si un hilo está disponible o no.
+
+    Lo que hace:
+    1. Verifica que el usuario sea el comprador o el dueño.
+    2. Busca el hilo por su nombre.
+    3. Cambia su estado.
+    */
+    pub fn alternar_hilo(context: Context<NuevoHilo>, nombre: String) -> Result<()> {
+
+        require!( 
+            context.accounts.tienda.comprador == context.accounts.comprador.key(),
+            Errores::NoEresElComprador 
+        );
+
+        let hilos = &mut context.accounts.tienda.hilos; 
+
+        // Recorre la lista
+        for i in 0..hilos.len() { 
+
+            let estado = hilos[i].disponible;
+
+            if hilos[i].nombre == nombre {
+
+                // Cambia el estado del hilo
+                let nuevo_estado = !estado;
+
+                hilos[i].disponible = nuevo_estado;
+
+                msg!("El hilo: {} ahora esta disponible: {}", nombre, nuevo_estado);
+
+                return Ok(()); 
+            }
+        }
+
+        // Error si el hilo no existe
+        Err(Errores::HiloNoExiste.into()) 
+    }
+
+}
+
+  Son los errores que puede mostrar el programa.
+*/
+#[error_code]
+pub enum Errores {
+
+    #[msg("Error, no eres el comprador del hilo que deseas modificar")]
+    NoEresElComprador,
+
+    #[msg("Error, el hilo con el que deseas interactuar no existe")]
+    HiloNoExiste,
+}
+
+
+/*
+Aquí se guarda la información de la tienda.
+
+Se guarda:
+1. El dueño
+2. El nombre
+3. La lista de hilos
+*/
+#[account] 
+#[derive(InitSpace)]
+pub struct Tienda { 
+
+    pub comprador: Pubkey, 
+
+    #[max_len(60)] 
+    pub nombre: String,
+
+    #[max_len(10)] 
+    pub hilos: Vec<Hilo>,
+}
+
+/*
+Representa cada hilo de la tienda.
+*/
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, InitSpace, PartialEq, Debug)]
+pub struct Hilo {
+
+   #[max_len(60)]
+    pub nombre: String,
+
+    #[max_len(30)]
+    pub color: String, 
+
+    pub grosor: u16, 
+
+    pub disponible: bool,
+}
+
+/*
+Se usan cuando se crea la tienda.
+*/
+#[derive(Accounts)]
+pub struct NuevaTienda<'info> {
+
+    #[account(mut)] 
+    pub comprador: Signer<'info>,
+
+    #[account(
+        init,
+        payer = comprador,
+        space = Tienda::INIT_SPACE + 8,
+        seeds = [b"tienda", comprador.key().as_ref()],
+        bump
+    )]
+    pub tienda: Account<'info, Tienda>, 
+
+    pub system_program: Program<'info, System>, 
+}
+
+/*
+Se usan para agregar, eliminar o cambiar hilos.
+*/
+#[derive(Accounts)]
+pub struct NuevoHilo<'info> {
+
+    pub comprador: Signer<'info>,
+
+    #[account(mut)] 
+    pub tienda: Account<'info, Tienda>, 
+}
